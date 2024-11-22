@@ -1,14 +1,18 @@
+
 from django.shortcuts import render
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken,TokenError
+from rest_framework.permissions import AllowAny,IsAuthenticated
+from django.contrib.auth import authenticate
 
 from .models import Mobiles
-from .serializers import MobSerializer
+from .serializers import MobSerializer,UserRegistrationSerializer,UserLoginSerializer
 
 # Create your views here.
 class MobView(APIView):
-    
+    permission_classes= [IsAuthenticated]
     def post(self,request):
         # Pass JSON data from user POST request to serializer for validation
         serializedData=MobSerializer(data=request.data)
@@ -75,6 +79,72 @@ class MobView(APIView):
        #delete item
         mobData.delete()
         return Response('deleted',status=204)
+
+#views for user management
+class UserManagement(APIView):
+    permission_classes=[AllowAny]   #Anyone can access this endpoind
+    def post(self,request):
+        serializer = UserRegistrationSerializer(data=request.data)
+        if serializer.is_valid():
+            user=serializer.save()
+            return Response({
+                'message': 'User created successfully.',
+                'user': serializer.data ,
+            },status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors,status=400)
+
+#view for login
+class UserLogin(APIView):
+    permission_classes=[AllowAny]
+    def post(self,request):
+        serializer=UserLoginSerializer(data=request.data)
+        if serializer.is_valid():
+            username = serializer.validated_data['username']
+            password = serializer.validated_data['password']
+
+            user=authenticate(username=username,password=password)
+            if user:
+                # Generate JWT token 
+                refresh = RefreshToken.for_user(user)
+                access_token = str(refresh.access_token)
+                return Response({
+                    'access_token': access_token,
+                    'refresh_token': str(refresh),
+                    'message': "success"
+                }, status=status.HTTP_200_OK)
+
+            else:
+                return Response({
+                    'message': "invalid credentials",   
+                },status=status.HTTP_401_UNAUTHORIZED)
+
+        return Response(
+            serializer.errors, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+#view for Logout
+class UserLogout(APIView):
+    permission_classes=[IsAuthenticated]
+    def post(self,request):
+        try:
+            # Get the user's refresh token from the request
+            print(request)
+            refresh_token = request.data.get('refresh_token')
+
+             # Revoke the refresh token by blacklisting it
+            token=RefreshToken(refresh_token)
+            token.blacklist()
+
+            return Response({"message": "Successfully logged out"}, status=status.HTTP_205_RESET_CONTENT)
+
+        except TokenError:
+            return Response({"message": "Invalid refresh token"}, status=status.HTTP_400_BAD_REQUEST)
+            
+
+        
+
 
 
 
