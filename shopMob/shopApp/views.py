@@ -6,6 +6,12 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken,TokenError
 from rest_framework.permissions import AllowAny,IsAuthenticated
 from django.contrib.auth import authenticate
+import os
+from django.core.files.storage import default_storage
+from django.conf import settings
+from django.contrib.auth.decorators import permission_required
+from django.utils.decorators import method_decorator
+
 
 from .models import Mobiles
 from .serializers import MobSerializer,UserRegistrationSerializer,UserLoginSerializer
@@ -13,15 +19,37 @@ from .serializers import MobSerializer,UserRegistrationSerializer,UserLoginSeria
 # Create your views here.
 class MobView(APIView):
     permission_classes= [IsAuthenticated]
+
+    @method_decorator(permission_required('shopApp.add_mobiles',raise_exception=True))
     def post(self,request):
+
         # Pass JSON data from user POST request to serializer for validation
         serializedData=MobSerializer(data=request.data)
 
         # Check if  data passes validation checks from serializer
         if serializedData.is_valid():
-            # If  data is valid, create a new todo item record in the database
+
+            # Handle image file upload
+            image = request.FILES.get('image')  # Get the image file from the request
+
+            if image:
+                #saving image to media/mob_images directory
+                file_path=os.path.join('mob_images', image.name)
+                #check whether the file already exists
+                if not os.path.exists(os.path.join(settings.MEDIA_ROOT, file_path)):
+                    default_storage.save(file_path, image)
+
+                #generate image url
+                image_url=f"{request.scheme}://{request.get_host()}{settings.MEDIA_URL}{file_path}"
+
+                 # Save the image url in the database
+                serializedData.validated_data['image_url'] = image_url
+
+            # If  data is valid, create a new  record in the database
             resp=serializedData.save()
-            return Response(resp.id,status=201)
+            return Response({
+                'message':"mobile created"
+            },status.HTTP_201_CREATED)
 
         return Response(serializedData.errors,status=400)
     
@@ -47,6 +75,7 @@ class MobView(APIView):
 
         return Response(serializedData.data)
 
+    @method_decorator(permission_required('shopApp.change_mobiles',raise_exception=True))
     def put(self,request,id=None):
         try:
              # If an id is provided in the PUT request, retrieve the item by that id
@@ -67,6 +96,7 @@ class MobView(APIView):
         # If the update data is not valid, return an error response
         return Response(serializedData.errors, status=400)
 
+    @method_decorator(permission_required('shopApp.delete_mobiles',raise_exception=True))
     def delete(self,request,id=None):
         try:
              # check whether the item exist
@@ -77,6 +107,21 @@ class MobView(APIView):
             return Response({'errors': 'This item does not exist.'},status=400)
 
        #delete item
+
+        # Get the image URL from the record
+        image_url = mobData.image_url
+
+         # Get the relative file path
+        relative_image_path = image_url[len(request.scheme + "://" + request.get_host() + settings.MEDIA_URL):]
+        # Build the full path to the image file
+        image_path = os.path.join(settings.MEDIA_ROOT, relative_image_path)
+
+        # Check if the file exists and delete it
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        else:
+            return Response({"message": "Image file not found"}, status=status.HTTP_404_NOT_FOUND)
+
         mobData.delete()
         return Response('deleted',status=204)
 

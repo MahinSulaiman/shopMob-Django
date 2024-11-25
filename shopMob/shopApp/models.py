@@ -1,6 +1,6 @@
 from django.db import models
 
-# Create your models here.
+# Create your models here.it creates table in db
 class Mobiles(models.Model):
     id=models.AutoField(
         primary_key=True
@@ -33,6 +33,13 @@ class Mobiles(models.Model):
         auto_now=True,
         null=False,
         blank=False
+    )
+
+    image_url= models.CharField(
+        max_length=300,
+        null=False,
+        blank=False,
+        default="image-name"
     )
 
     def __str__(self):
